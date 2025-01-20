@@ -1,89 +1,87 @@
-from flask import Flask, request, jsonify  # Importações do Flask
-import requests  # Importação da biblioteca para requisições HTTP
-from dotenv import load_dotenv  # Carregar variáveis de ambiente do .env
-import os  # Trabalhar com variáveis de ambiente
+from flask import Flask, request, jsonify
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 
 # Carregar o arquivo .env
 load_dotenv()
 
-# Obter as credenciais das variáveis de ambiente
-APP_KEY = os.getenv('APP_KEY')
-APP_SECRET = os.getenv('APP_SECRET')
+# Obter as credenciais do banco de dados
+DB_HOST = os.getenv('DB_HOST')
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
 
-# Verificação de segurança: se as credenciais não estiverem configuradas, o sistema para
-if not APP_KEY or not APP_SECRET:
-    raise RuntimeError("As variáveis 'APP_KEY' e 'APP_SECRET' não estão configuradas no arquivo .env")
+# Verificar se todas as variáveis estão configuradas
+if not all([DB_HOST, DB_NAME, DB_USER, DB_PASSWORD]):
+    raise RuntimeError("Credenciais do banco de dados não configuradas no arquivo .env")
 
 # Configuração do Flask
 app = Flask(__name__)
 
-# Endpoints da API Omie
-url_clientes = "https://app.omie.com.br/api/v1/geral/clientes/"
-url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
+# Função para conectar ao banco de dados
+def get_db_connection():
+    return psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
 
-# Rota para listar clientes
+# Rota para consultar clientes
 @app.route('/clientes', methods=['GET'])
 def listar_clientes():
-    pagina = request.args.get('pagina', 1)
-    registros_por_pagina = request.args.get('registros_por_pagina', 10)
+    pagina = int(request.args.get('pagina', 1))
+    registros_por_pagina = int(request.args.get('registros_por_pagina', 10))
+    offset = (pagina - 1) * registros_por_pagina
 
-    payload = {
-        "call": "ListarClientes",
-        "app_key": APP_KEY,
-        "app_secret": APP_SECRET,
-        "param": [
-            {
-                "pagina": int(pagina),
-                "registros_por_pagina": int(registros_por_pagina)
-            }
-        ]
-    }
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(url_clientes, json=payload, headers=headers)
+        # Query para listar os clientes com paginação
+        cur.execute("""
+            SELECT codigo_cliente_omie, nome, email 
+            FROM clientes
+            ORDER BY nome
+            LIMIT %s OFFSET %s
+        """, (registros_por_pagina, offset))
 
-    if response.status_code == 200:
-        dados = response.json()
-        if 'clientes_cadastro' in dados:
-            return jsonify(dados['clientes_cadastro'])
-        else:
-            return jsonify({"erro": "Campo 'clientes_cadastro' não encontrado"}), 400
-    else:
-        return jsonify({"erro": "Erro na requisição à API Omie", "detalhes": response.text}), 500
+        clientes = cur.fetchall()
+        cur.close()
+        conn.close()
 
-# Rota para listar produtos
+        return jsonify(clientes)
+    except Exception as e:
+        return jsonify({"erro": "Erro ao consultar o banco de dados", "detalhes": str(e)}), 500
+
+# Rota para consultar produtos
 @app.route('/produtos', methods=['GET'])
 def listar_produtos():
-    pagina = request.args.get('pagina', 1)
-    registros_por_pagina = request.args.get('registros_por_pagina', 50)  # Máximo permitido
-    apenas_importado_api = request.args.get('apenas_importado_api', 'N')  # N ou S
-    filtrar_apenas_omiepdv = request.args.get('filtrar_apenas_omiepdv', 'N')  # N ou S
+    pagina = int(request.args.get('pagina', 1))
+    registros_por_pagina = int(request.args.get('registros_por_pagina', 10))
+    offset = (pagina - 1) * registros_por_pagina
 
-    payload = {
-        "call": "ListarProdutos",
-        "app_key": APP_KEY,
-        "app_secret": APP_SECRET,
-        "param": [
-            {
-                "pagina": int(pagina),
-                "registros_por_pagina": int(registros_por_pagina),
-                "apenas_importado_api": apenas_importado_api,
-                "filtrar_apenas_omiepdv": filtrar_apenas_omiepdv
-            }
-        ]
-    }
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(url_produtos, json=payload, headers=headers)
+        # Query para listar os produtos com paginação
+        cur.execute("""
+            SELECT codigo_produto, descricao, preco
+            FROM produtos
+            ORDER BY descricao
+            LIMIT %s OFFSET %s
+        """, (registros_por_pagina, offset))
 
-    if response.status_code == 200:
-        dados = response.json()
-        if 'produto_servico_listfull_response' in dados:
-            return jsonify(dados['produto_servico_listfull_response'])
-        else:
-            return jsonify({"erro": "Campo 'produto_servico_listfull_response' não encontrado"}), 400
-    else:
-        return jsonify({"erro": "Erro na requisição à API Omie", "detalhes": response.text}), 500
+        produtos = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        return jsonify(produtos)
+    except Exception as e:
+        return jsonify({"erro": "Erro ao consultar o banco de dados", "detalhes": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
