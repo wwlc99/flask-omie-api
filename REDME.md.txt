@@ -1,0 +1,11 @@
+# Flask Omie API
+Esta é uma API em Flask para acessar os dados de clientes e produtos da Omie.
+
+## Instalação
+1. Clone este repositório: `git clone https://github.com/seu-usuario/seu-repositorio.git`
+2. Instale as dependências: `pip install -r requirements.txt`
+3. Execute o servidor: `python app.py`
+
+## Endpoints
+- `/clientes`: Retorna a lista de clientes.
+- `/produtos`: Retorna a lista de produtos.
