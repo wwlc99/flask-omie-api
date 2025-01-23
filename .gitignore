@@ -12,3 +12,6 @@ venv/
 # Ignorar configurações do VS Code e logs
 .vscode/
 *.log
+
+# Ignorar tutorial para atualizar o repositório
+git_status.txt
